@@ -1,12 +1,71 @@
-# React + Vite
+# MC Tunes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MC Tunes is a web application built with React and Vite that provides a music dashboard experience. The application features a secure login system and a modern, responsive design with a red and grey/black color scheme.
 
-Currently, two official plugins are available:
+## Current Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Authentication System
+- Secure login page with username/password authentication
+- Mock user service for development (replaceable with real database)
+- Error handling and loading states
+- Test accounts available for development
 
-## Expanding the ESLint configuration
+### User Interface
+- Red and grey/black color scheme for visual appeal
+- Consistent styling across all components
+- Loading states and error messages for better user experience
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Color Scheme
+The application uses a carefully selected color palette:
+- Primary Red: `#ff1a1a`
+- Secondary Red: `#cc0000`
+- Primary Dark: `#1a1a1a`
+- Light Grey: `#333333`
+- Dark Grey: `#242424`
+- Text Light: `#ffffff`
+- Text Grey: `#808080`
+
+## Test Accounts
+For development purposes, you can use these test accounts:
+1. Admin Account
+   - Username: `admin`
+   - Password: `admin123`
+2. Test User Account
+   - Username: `user1`
+   - Password: `pass123`
+
+## Project Structure
+```
+src/
+├── components/
+│   └── Login.jsx       # Login component with authentication
+├── services/
+│   └── mockUserService.js  # Authentication service
+├── App.jsx            # Main application component
+├── App.css           # Main application styles
+└── index.css         # Global styles and variables
+```
+
+## Running the Project
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
+3. Open your browser and navigate to the local development server (usually `http://localhost:5173`)
+
+## Upcoming Features
+- Oracle database integration for user authentication
+- Music dashboard implementation
+- User profile management
+- Playlist creation and management
+- Music player interface
+
+## Tech Stack
+- React
+- Vite
+- CSS
+- JavaScript
