@@ -1,0 +1,19 @@
+.settings-root {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--primary-dark);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.settings-section {
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.settings-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
