@@ -15,30 +15,23 @@ MC Tunes is a web application built with React and Vite that provides a music da
 - Consistent styling across all components
 - Loading states and error messages for better user experience
 
-## Color Scheme
-The application uses a carefully selected color palette:
-- Primary Red: `#ff1a1a`
-- Secondary Red: `#cc0000`
-- Primary Dark: `#1a1a1a`
-- Light Grey: `#333333`
-- Dark Grey: `#242424`
-- Text Light: `#ffffff`
-- Text Grey: `#808080`
-
 ## Test Accounts
 For development purposes, you can use these test accounts:
 1. Admin Account
    - Username: `admin`
-   - Password: `admin123`
+   - Password: `*****`
 2. Test User Account
    - Username: `user1`
-   - Password: `pass123`
+   - Password: `*****`
 
 ## Project Structure
 ```
 src/
+├── assets/
+│   └── mc_tunes_logo.png
 ├── components/
-│   └── Login.jsx       # Login component with authentication
+│   └── login.jsx       # Login component with authentication
+│   └── login.css       # Login component styles
 ├── services/
 │   └── mockUserService.js  # Authentication service
 ├── App.jsx            # Main application component

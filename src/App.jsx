@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Login from './components/Login'
-import MCT from './assets/mc_tunes_logo.png'
+import Dashboard from './components/Dashboard'
 import './App.css'
 
 function App() {
@@ -12,22 +12,17 @@ function App() {
     setIsLoggedIn(true)
   }
 
+  const handleLogout = () => {
+    setUser(null)
+    setIsLoggedIn(false)
+  }
+
   return (
     <>
       {!isLoggedIn ? (
         <Login onLogin={handleLogin} />
       ) : (
-        <>
-          <div>
-            <a target="_blank">
-              <img src={MCT} className="logo logo-large" alt="MC Tunes logo" />
-            </a>
-          </div>
-          <h1>Welcome to MC Tunes, {user.name}!</h1>
-          <div className="card">
-            <p>Your music dashboard will go here</p>
-          </div>
-        </>
+        <Dashboard user={user} onLogout={handleLogout} />
       )}
     </>
   )
