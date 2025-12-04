@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import './settings.css'
+import { submitFeedback, submitBugReport } from '../services/settings'
 
-function Settings({ onClose }) {
+function Settings({ user, onClose }) {
   // Local state for credential level and explicit preference
   const [credentialLevel, setCredentialLevel] = useState(1) // default: 1 = user
   // Explicit recommendations default to true unless the account is a child (level 0)
   const [allowExplicit, setAllowExplicit] = useState(true)
+  const [status, setStatus] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const userId = user?.id ?? user?.userID ?? user?.userId
 
   // If credential level is 0 (child), force explicit to false and disable changes
   useEffect(() => {
@@ -22,20 +27,36 @@ function Settings({ onClose }) {
 
   const handleSendFeedback = () => {
     const message = window.prompt('Please enter your feedback:')
-    if (message != null && message.trim() !== '') {
-      // Placeholder: submit feedback
-      console.log('Feedback submitted:', message)
-      alert('Thank you for your feedback! (placeholder)')
+    if (message == null || message.trim() === '') return
+
+    if (!userId) {
+      setStatus({ type: 'error', text: 'User is not available. Please re-login.' })
+      return
     }
+
+    setStatus(null)
+    setIsSubmitting(true)
+    submitFeedback(userId, message.trim(), 'MEDIUM')
+      .then(() => setStatus({ type: 'success', text: 'Feedback submitted. Thank you!' }))
+      .catch((err) => setStatus({ type: 'error', text: err.message || 'Failed to submit feedback' }))
+      .finally(() => setIsSubmitting(false))
   }
 
   const handleReportBug = () => {
     const message = window.prompt('Please describe the bug you encountered:')
-    if (message != null && message.trim() !== '') {
-      // Placeholder: submit bug report
-      console.log('Bug report submitted:', message)
-      alert('Bug report submitted. Thank you! (placeholder)')
+    if (message == null || message.trim() === '') return
+
+    if (!userId) {
+      setStatus({ type: 'error', text: 'User is not available. Please re-login.' })
+      return
     }
+
+    setStatus(null)
+    setIsSubmitting(true)
+    submitBugReport(userId, message.trim(), 'HIGH')
+      .then(() => setStatus({ type: 'success', text: 'Bug report submitted. Thank you!' }))
+      .catch((err) => setStatus({ type: 'error', text: err.message || 'Failed to submit bug report' }))
+      .finally(() => setIsSubmitting(false))
   }
 
   return (
@@ -70,9 +91,15 @@ function Settings({ onClose }) {
       </div>
 
       <div className="settings-section">
-        <button className="ribbon-btn" onClick={handleSendFeedback}>Send Feedback</button>
-        <button className="ribbon-btn" onClick={handleReportBug} style={{ marginLeft: '8px' }}>Report a Bug</button>
+        <button className="ribbon-btn" onClick={handleSendFeedback} disabled={isSubmitting}>Send Feedback</button>
+        <button className="ribbon-btn" onClick={handleReportBug} style={{ marginLeft: '8px' }} disabled={isSubmitting}>Report a Bug</button>
       </div>
+
+      {status && (
+        <div className={`settings-status ${status.type === 'error' ? 'error' : 'success'}`}>
+          {status.text}
+        </div>
+      )}
 
       <div className="settings-actions">
         <button className="ribbon-btn" onClick={handleSave}>Save</button>

@@ -42,6 +42,11 @@
     background-color: var(--secondary-red);
 }
 
+.login-form button:disabled {
+    background-color: var(--text-grey);
+    cursor: not-allowed;
+}
+
 .error-message {
     color: var(--primary-red);
     background-color: rgba(255, 26, 26, 0.1);
@@ -50,7 +55,23 @@
     margin-bottom: 1rem;
 }
 
-.login-form button:disabled {
-    background-color: var(--text-grey);
+.login-toggle {
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--text-light);
+    text-align: center;
+}
+
+.login-toggle .link-btn {
+    background: none;
+    border: none;
+    color: var(--primary-red);
+    cursor: pointer;
+    padding: 0 4px;
+    text-decoration: underline;
+}
+
+.login-toggle .link-btn:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
 }

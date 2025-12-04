@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authenticateUser } from '../services/mockUserService';
+import { authenticateUser, registerUser } from '../services/login.js';
 import './login.css';
 
 function Login({ onLogin }) {
@@ -7,6 +7,7 @@ function Login({ onLogin }) {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [mode, setMode] = useState('login'); // 'login' | 'register'
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -17,10 +18,18 @@ function Login({ onLogin }) {
             if (!username || !password) {
                 throw new Error('Please enter both username and password');
             }
-            console.log('Submitting login form:', { username });
-            const response = await authenticateUser(username, password);
-            console.log('Login response:', response);
-            onLogin(response.user);
+            if (mode === 'login') {
+                console.log('Submitting login form:', { username });
+                const response = await authenticateUser(username, password);
+                console.log('Login response:', response);
+                onLogin(response.user);
+            } else {
+                console.log('Submitting registration form:', { username });
+                await registerUser(username, password);
+                setMode('login');
+                setPassword('');
+                setError('Registration successful. Please log in.');
+            }
         } catch (err) {
             console.error('Login error:', err);
             setError(err.message || 'Login failed');
@@ -52,9 +61,22 @@ function Login({ onLogin }) {
                     required
                 />
                 <button type="submit" disabled={isLoading}>
-                    {isLoading ? 'Logging in...' : 'Login'}
+                    {isLoading ? (mode === 'login' ? 'Logging in...' : 'Registering...') : (mode === 'login' ? 'Login' : 'Register')}
                 </button>
             </form>
+            <div className="login-toggle">
+                {mode === 'login' ? (
+                    <>
+                        <span>Need an account? </span>
+                        <button type="button" onClick={() => { setMode('register'); setError(''); }} disabled={isLoading} className="link-btn">Register</button>
+                    </>
+                ) : (
+                    <>
+                        <span>Already have an account? </span>
+                        <button type="button" onClick={() => { setMode('login'); setError(''); }} disabled={isLoading} className="link-btn">Back to login</button>
+                    </>
+                )}
+            </div>
         </div>
     );
 }

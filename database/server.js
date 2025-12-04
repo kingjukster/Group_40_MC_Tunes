@@ -15,6 +15,15 @@ dotenv.config({ path: path.join(__dirname,'.env') });
 const app = express();
 const PORT = 3000;
 
+// Basic CORS for local dev front-end
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 const sequelize = new Sequelize('user_info', 'root', process.env.password, {
   dialect: 'mysql',
   replication: {
@@ -61,6 +70,12 @@ app.get('/login', async (req, res) => {
     );
     if (rows.length == 0)
       return res.status(401).json({ error: "Invalid credentials" });
+
+    const { hashedpassword } = hash(req.query.password, rows[0].userSalt);
+    if (hashedpassword !== rows[0].userHash) {
+      return res.status(401).json({ error: "Invalid Hash" });
+    }
+
     res.json({ message: "Login successful", user: rows[0] });
   }catch (err) {
     console.error(err);
@@ -71,6 +86,7 @@ app.get('/login', async (req, res) => {
 //register api
 app.post('/register', async(req,res) => {
   try{
+    //TODO: Should take in just username and password, hash password here
     const { username, userhash, usersalt } = req.body;
     if (!username || !usersalt || !userhash){
       return res.status(400).json({ error: "All fields are required" });

@@ -17,3 +17,22 @@
   gap: 8px;
   justify-content: flex-end;
 }
+
+.settings-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.settings-status.success {
+  background: #11331a;
+  color: #8ce99a;
+  border: 1px solid #2f9e44;
+}
+
+.settings-status.error {
+  background: #331113;
+  color: #ff8787;
+  border: 1px solid #e03131;
+}

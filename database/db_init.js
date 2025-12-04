@@ -240,18 +240,3 @@ sequelize.authenticate()
   })
   .catch(err => console.error('Unable to connect to database:', err));
 
-// Export everything
-module.exports = {
-  sequelize,
-  Login,
-  Songs,
-  Artists,
-  SongsArtistsLink,
-  SongsArtistsUserLink,
-  Feedback,
-  FeedbackUserLink,
-  BugReports,
-  BugReportUserLink,
-  PermissionLevel,
-  PermissionUserLink
-};
