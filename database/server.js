@@ -4,6 +4,7 @@ import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { Sequelize, QueryTypes } from 'sequelize';
+import { error } from 'node:console';
 
 
 
@@ -287,6 +288,97 @@ app.get('/bugreports', async(req, res) =>{
         }
       );
       res.json({ reports: rows });
+  }catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+//get all song ratings for a user
+app.get('/ratings', async(req,res) =>{
+  try
+  { const {username} = req.query.username;
+    if (!username) {
+        return res.status(400).json({ error: "username is required" });
+      }
+    //get user id
+    const user = await sequelize.query(
+      "SELECT id FROM Login WHERE userName = ?",
+        {
+          replacements: [username],
+          type: QueryTypes.SELECT
+        }
+      );
+    if (user.length == 0)
+      return res.status(401).json({ error: "Invalid credentials" });
+    //get user ratings
+    const rows = await sequelize.query(
+      "SELECT * FROM Songs_user_link WHERE userID = ?",
+        {
+          replacements: [user[0].id],
+          type: QueryTypes.SELECT
+        }
+      );
+      res.json({ reports: rows });
+  }catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post('/ratings', async(req, res) =>{
+  try {
+    const {userid, songid, rating } = req.body;
+    
+    if (!(userid && songid && rating)) {
+      return res.status(400).json({ error: "Incomplete query" });
+    }
+    //get user id
+    const user = await sequelize.query(
+      "SELECT id FROM Login WHERE userName = ?",
+        {
+          replacements: [username],
+          type: QueryTypes.SELECT
+        }
+      );
+    if (user.length == 0)
+      return res.status(401).json({ error: "Invalid credentials" });    
+    const [result] = await sequelize.query(
+      "INSERT INTO Songs_user_link (songID,userID,rating) VALUES (?, ?, ?)",
+      {
+        replacements: [songid,user[0].id,rating],
+        type: QueryTypes.INSERT
+      }
+    );
+    
+    res.status(201).json({message: "Rating submitted"});
+  }catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post('/songs', async(req,res) => {
+  try{
+    const { songs } = req.body;
+    if (!songs || !Array.isArray(songs) || songs.length === 0) {
+      return res.status(400).json({ error: "Songs array is required" });
+    }
+    //insert each song
+    for (const song of songs) {
+      const { songName, genre, explicit } = song;
+      
+      const [result] = await sequelize.query(
+        "INSERT INTO Songs (songName, genre, explicit) VALUES (?, ?, ?)",
+        {
+          replacements: [ songName, genre || null, 
+            explicit !== undefined ? explicit : false
+          ],
+          type: QueryTypes.INSERT
+        }
+      );
+      res.status(201).json({message: "Songs inserted"});
+    }
   }catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });

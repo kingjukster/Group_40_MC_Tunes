@@ -4,7 +4,7 @@ USE user_info;
 CREATE TABLE IF NOT EXISTS Login (
     id INT PRIMARY KEY AUTO_INCREMENT,
     userHash VARCHAR(255) NOT NULL,
-    userName VARCHAR(255) NOT NULL,
+    userName VARCHAR(255) NOT NULL UNIQUE,
     userSalt VARCHAR(255) NOT NULL
 );
 
@@ -33,6 +33,13 @@ CREATE TABLE  IF NOT EXISTS Songs_artists_user_link (
     artistID INT NOT NULL,
     userID INT NOT NULL,
     PRIMARY KEY (songID, artistID, userID)
+);
+
+CREATE TABLE IF NOT EXISTS Songs_user_link (
+    songID INT NOT NULL,
+    userID INT NOT NULL,
+    rating INT NOT NULL,
+    PRIMARY KEY (songID,userID)
 );
 
 CREATE TABLE IF NOT EXISTS Feedback (
