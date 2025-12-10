@@ -71,6 +71,33 @@ class Recommendation_System:
         )
         return results
     
+    def get_parsed_recommendations(self, positive_ids=[], negative_ids=[], genre=None, artist=None, subgenre=None, num_points=20):
+        if len(positive_ids) != 0 or len(negative_ids) != 0:
+            raw = self.get_recommendations_using_feedback(
+                positive_ids, negative_ids, genre, artist, subgenre, num_points
+            )
+            # QueryResponseNearby → extract ScoredPoints
+            results = raw.points
+
+        else:
+            raw = self.get_recommendations_using_filter(
+                genre, artist, subgenre, num_points
+            )
+            # Scroll returns (points, next_offset)
+            results = raw[0]
+
+        
+        # Parsing will be returned as list of tuples. Tuples will be ordered (id, artist, genre, name)
+        parsed_data = []
+        for point in results:
+            track_id = point.id
+            artist = point.payload.get("artist")
+            genre = point.payload.get("genre")
+            name = point.payload.get("name")
+
+            parsed_data.append((track_id, artist, genre, name))
+        return parsed_data
+    
 if __name__ == "__main__":
     RS = Recommendation_System("MC Tunes")
-    print(RS.get_recommendations_using_feedback(positive_ids=[26],negative_ids=[],genre="hip hop", num_points=10))
+    print(RS.get_parsed_recommendations(positive_ids=[26],negative_ids=[],genre="hip hop", num_points=10))
