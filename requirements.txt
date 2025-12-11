@@ -1,0 +1,7 @@
+datasets
+qdrant-client
+pandas
+numpy
+torch
+panns-inference
+requests

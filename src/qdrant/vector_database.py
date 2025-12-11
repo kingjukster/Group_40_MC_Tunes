@@ -1,5 +1,6 @@
 from qdrant_client import QdrantClient, models
 from qdrant_client.http import models
+import requests
 
 class Recommendation_System:
 
@@ -71,7 +72,9 @@ class Recommendation_System:
         )
         return results
     
-    def get_parsed_recommendations(self, positive_ids=[], negative_ids=[], genre=None, artist=None, subgenre=None, num_points=20):
+    def get_parsed_recommendations(self, userID, genre=None, artist=None, subgenre=None, num_points=20):
+        positive_ids, negative_ids = self.get_user_ratings(userID)
+
         if len(positive_ids) != 0 or len(negative_ids) != 0:
             raw = self.get_recommendations_using_feedback(
                 positive_ids, negative_ids, genre, artist, subgenre, num_points
@@ -98,6 +101,34 @@ class Recommendation_System:
             parsed_data.append((track_id, artist, genre, name))
         return parsed_data
     
+    def get_user_ratings(self, userID):
+        # Rating api URL
+        url = "http://localhost:3000/ratings"
+
+        params = {
+            f"username": {userID}
+        }
+
+        response = requests.get(url, params=params)
+
+        if response.ok:
+            data = response.json()
+            print("Ratings:", data)
+        else:
+            print("Error:", response.status_code, response.text)
+
+        positive_ids = []
+        negative_ids = []
+        for entry in data.get("reports", []):
+            song_id = entry["songID"]
+            rating = entry["rating"]
+
+            if rating == 1:
+                positive_ids.append(song_id)
+            elif rating == 0:
+                negative_ids.append(song_id)
+        return positive_ids, negative_ids
+        
 if __name__ == "__main__":
     RS = Recommendation_System("MC Tunes")
     print(RS.get_parsed_recommendations(positive_ids=[26],negative_ids=[],genre="hip hop", num_points=10))
