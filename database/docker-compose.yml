@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  mysql-master:
+    image: mysql:8.0
+    container_name: mysql-master
+    command: --server-id=1 --log-bin=mysql-bin --binlog-do-db=user_info
+    environment:
+      MYSQL_ROOT_PASSWORD: mctunes
+      MYSQL_DATABASE: user_info
+    ports:
+      - "3306:3306"
+    volumes:
+      - master-data:/var/lib/mysql
+    networks:
+      - mysql-cluster
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-replica:
+    image: mysql:8.0
+    container_name: mysql-replica
+    command: --server-id=2 --relay-log=mysql-relay-bin --log-bin=mysql-bin --binlog-do-db=user_info
+    environment:
+      MYSQL_ROOT_PASSWORD: mctunes
+    ports:
+      - "3307:3306"
+    volumes:
+      - replica-data:/var/lib/mysql
+    networks:
+      - mysql-cluster
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+
+volumes:
+  master-data:
+  replica-data:
+
+networks:
+  mysql-cluster:
+    driver: bridge
