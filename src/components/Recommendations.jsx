@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
 import './recommendations.css';
-import { fetchRecommendations } from '../services/recommendations';
+import { fetchRecommendations, fetchRecommendationsWithFeedback, submitRecommendationFeedback } from '../services/recommendations';
 
-function Recommendations({ onBack }) {
+function Recommendations({ onBack, user }) {
   const [genre, setGenre] = useState('');
   const [artist, setArtist] = useState('');
   const [subgenre, setSubgenre] = useState('');
   const [limit, setLimit] = useState(10);
+  const [mode, setMode] = useState('feedback'); // 'feedback' | 'filters'
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [feedbackMap, setFeedbackMap] = useState({});
 
   const normalizeItem = (item, idx) => {
     const payload = item?.payload || item;
     return {
-      id: payload?.id || item?.id || idx,
+      id: item?.id ?? payload?.id ?? idx,
       title: payload?.title || payload?.songName || payload?.name || 'Unknown track',
       artist: payload?.artist || payload?.artistName || 'Unknown artist',
       genre: payload?.genre || payload?.subgenre || 'Unknown genre',
@@ -26,8 +28,31 @@ function Recommendations({ onBack }) {
     setIsLoading(true);
     setError('');
     try {
-      const raw = await fetchRecommendations({ genre: genre || undefined, artist: artist || undefined, subgenre: subgenre || undefined, limit });
-      setItems(raw.map((r, i) => normalizeItem(r, i)));
+      if (mode === 'feedback') {
+        if (!user?.id) throw new Error('Missing user id for feedback-based recommendations');
+        const { list, positiveIds, negativeIds } = await fetchRecommendationsWithFeedback({
+          userId: user.id,
+          genre: genre || undefined,
+          artist: artist || undefined,
+          subgenre: subgenre || undefined,
+          limit
+        });
+        const mapped = list.map((r, i) => normalizeItem(r, i));
+        const fb = {};
+        positiveIds.forEach(id => { fb[String(id)] = 'like'; });
+        negativeIds.forEach(id => { fb[String(id)] = 'dislike'; });
+        setItems(mapped);
+        setFeedbackMap(fb);
+      } else {
+        const raw = await fetchRecommendations({
+          genre: genre || undefined,
+          artist: artist || undefined,
+          subgenre: subgenre || undefined,
+          limit
+        });
+        setItems(raw.map((r, i) => normalizeItem(r, i)));
+        setFeedbackMap({});
+      }
     } catch (err) {
       setItems([]);
       setError(err.message || 'Could not load recommendations');
@@ -36,11 +61,47 @@ function Recommendations({ onBack }) {
     }
   };
 
+  const handleFeedback = async (itemId, rating) => {
+    if (!user?.id) {
+      setError('Missing user id for feedback');
+      return;
+    }
+    try {
+      await submitRecommendationFeedback({ userId: user.id, songId: itemId, rating });
+      setFeedbackMap(prev => ({ ...prev, [String(itemId)]: rating === 1 ? 'like' : 'dislike' }));
+    } catch (err) {
+      setError(err.message || 'Could not save feedback');
+    }
+  };
+
   return (
     <div className="recs-root card">
       <div className="recs-header">
         <h2>Recommendations</h2>
         <button className="ribbon-btn" onClick={onBack}>Back</button>
+      </div>
+
+      <div className="recs-mode">
+        <label>
+          <input
+            type="radio"
+            name="recs-mode"
+            value="feedback"
+            checked={mode === 'feedback'}
+            onChange={() => setMode('feedback')}
+          />
+          Use likes/dislikes
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="recs-mode"
+            value="filters"
+            checked={mode === 'filters'}
+            onChange={() => setMode('filters')}
+          />
+          Filters only
+        </label>
       </div>
 
       <div className="recs-filters">
@@ -84,6 +145,22 @@ function Recommendations({ onBack }) {
               <span>{item.artist}</span>
               <span>• {item.genre}</span>
               {item.score != null && <span>• score: {item.score}</span>}
+            </div>
+            <div className="recs-actions">
+              <button
+                className={`pill-btn ${feedbackMap[String(item.id)] === 'like' ? 'pill-active' : ''}`}
+                onClick={() => handleFeedback(item.id, 1)}
+                disabled={isLoading}
+              >
+                Like
+              </button>
+              <button
+                className={`pill-btn danger ${feedbackMap[String(item.id)] === 'dislike' ? 'pill-active' : ''}`}
+                onClick={() => handleFeedback(item.id, 0)}
+                disabled={isLoading}
+              >
+                Dislike
+              </button>
             </div>
           </div>
         ))}

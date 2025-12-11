@@ -32,3 +32,67 @@ export const fetchRecommendations = async ({ genre, artist, subgenre, limit = 20
     const list = Array.isArray(rawList) ? rawList : (rawList?.points || []);
     return list;
 };
+
+// Feedback-aware recommendations (uses /recommendations/with-feedback)
+export const fetchRecommendationsWithFeedback = async ({ userId, genre, artist, subgenre, limit = 20 }) => {
+    if (!userId) throw new Error('userId is required');
+
+    const params = new URLSearchParams();
+    params.append('userId', userId);
+    if (genre) params.append('genre', genre);
+    if (artist) params.append('artist', artist);
+    if (subgenre) params.append('subgenre', subgenre);
+    if (limit) params.append('num_points', limit);
+
+    const res = await fetch(`${API_BASE_URL}/recommendations/with-feedback?${params.toString()}`, {
+        method: 'GET'
+    });
+
+    let payload = null;
+    try {
+        payload = await res.json();
+    } catch {
+        payload = null;
+    }
+
+    if (!res.ok) {
+        const msg = payload && payload.error ? payload.error : (res.statusText || 'Failed to load recommendations');
+        throw new Error(msg);
+    }
+
+    const rawList = payload?.points || payload?.result || payload?.recommendations || payload || [];
+    const list = Array.isArray(rawList) ? rawList : (rawList?.points || []);
+
+    return {
+        list,
+        positiveIds: payload?.positive_ids || [],
+        negativeIds: payload?.negative_ids || []
+    };
+};
+
+// Save like/dislike feedback (1 = like, 0 = dislike)
+export const submitRecommendationFeedback = async ({ userId, songId, rating }) => {
+    if (userId == null || songId == null || rating == null) {
+        throw new Error('userId, songId, and rating are required');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/ratings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userid: userId, songid: songId, rating })
+    });
+
+    let payload = null;
+    try {
+        payload = await res.json();
+    } catch {
+        payload = null;
+    }
+
+    if (!res.ok) {
+        const msg = payload && payload.error ? payload.error : (res.statusText || 'Failed to save feedback');
+        throw new Error(msg);
+    }
+
+    return payload;
+};

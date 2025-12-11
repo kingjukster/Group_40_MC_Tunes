@@ -15,6 +15,18 @@
   align-items: center;
 }
 
+.recs-mode {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  color: #e0e0e0;
+  font-size: 14px;
+}
+
+.recs-mode input {
+  margin-right: 6px;
+}
+
 .recs-filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -82,4 +94,36 @@
   color: #bdbdbd;
   text-align: center;
   padding: 10px 0;
+}
+
+.recs-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pill-btn {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid #444;
+  background: #1f1f1f;
+  color: #f5f5f5;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pill-btn:hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: #ff5c5c;
+}
+
+.pill-btn.danger {
+  border-color: #ff5c5c;
+  color: #ffb3b3;
+}
+
+.pill-active {
+  background: #ff5c5c;
+  color: #1b1b1b;
+  border-color: #ff5c5c;
 }

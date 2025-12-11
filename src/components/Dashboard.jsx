@@ -11,7 +11,7 @@ function Dashboard({ user, onLogout }) {
     <div className="dashboard-root">
       <header className="dashboard-header">
         <div className="user-actions">
-          <span className="welcome">Hello, {user?.name}</span>
+          <span className="welcome">Hello, {user?.userName || user?.name}</span>
           <button className="ribbon-btn" onClick={onLogout}>Logout</button>
           <button className="ribbon-btn" onClick={() => setView('settings')}>Settings</button>
           <button className="ribbon-btn" onClick={() => setView('recommendations')}>Recommendations</button>
@@ -44,7 +44,7 @@ function Dashboard({ user, onLogout }) {
         )}
 
         {view === 'recommendations' && (
-          <Recommendations onBack={() => setView('home')} />
+          <Recommendations user={user} onBack={() => setView('home')} />
         )}
       </main>
     </div>

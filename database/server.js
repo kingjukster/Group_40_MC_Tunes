@@ -4,7 +4,7 @@ import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { Sequelize, QueryTypes } from 'sequelize';
-import { error } from 'node:console';
+import { hash } from '../src/services/login.js';
 
 
 
@@ -330,23 +330,27 @@ app.post('/ratings', async(req, res) =>{
   try {
     const {userid, songid, rating } = req.body;
     
-    if (!(userid && songid && rating)) {
+    if (userid == null || songid == null || rating == null) {
       return res.status(400).json({ error: "Incomplete query" });
     }
+    if (![0, 1, '0', '1'].includes(rating)) {
+      return res.status(400).json({ error: "rating must be 0 (dislike) or 1 (like)" });
+    }
+    const normalizedRating = Number(rating) === 1 ? 1 : 0;
     //get user id
     const user = await sequelize.query(
-      "SELECT id FROM Login WHERE userName = ?",
+      "SELECT id FROM Login WHERE id = ?",
         {
-          replacements: [username],
+          replacements: [userid],
           type: QueryTypes.SELECT
         }
       );
     if (user.length == 0)
       return res.status(401).json({ error: "Invalid credentials" });    
-    const [result] = await sequelize.query(
-      "INSERT INTO Songs_user_link (songID,userID,rating) VALUES (?, ?, ?)",
+    await sequelize.query(
+      "INSERT INTO Songs_user_link (songID,userID,rating) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE rating = VALUES(rating)",
       {
-        replacements: [songid,user[0].id,rating],
+        replacements: [songid,user[0].id,normalizedRating],
         type: QueryTypes.INSERT
       }
     );
@@ -368,7 +372,7 @@ app.post('/songs', async(req,res) => {
     for (const song of songs) {
       const { songName, genre, explicit } = song;
       
-      const [result] = await sequelize.query(
+      await sequelize.query(
         "INSERT INTO Songs (songName, genre, explicit) VALUES (?, ?, ?)",
         {
           replacements: [ songName, genre || null, 
@@ -377,11 +381,180 @@ app.post('/songs', async(req,res) => {
           type: QueryTypes.INSERT
         }
       );
-      res.status(201).json({message: "Songs inserted"});
     }
+    res.status(201).json({message: "Songs inserted"});
   }catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Recommendations backed by Qdrant scroll API
+app.get('/recommendations', async (req, res) => {
+  const {
+    genre = null,
+    artist = null,
+    subgenre = null
+  } = req.query;
+
+  const numPointsRaw = parseInt(req.query.num_points, 10);
+  const numPoints = Number.isNaN(numPointsRaw) ? 10 : Math.min(Math.max(numPointsRaw, 1), 50);
+
+  const normGenre = typeof genre === 'string' ? genre.trim() : null;
+  const normArtist = typeof artist === 'string' ? artist.trim() : null;
+  const normSubgenre = typeof subgenre === 'string' ? subgenre.trim() : null;
+
+  const must = [];
+  if (normGenre) {
+    // Use text match for case-insensitive genre filtering
+    must.push({ key: 'genre', match: { text: normGenre } });
+  }
+  if (normArtist) {
+    // Use text match to avoid exact-case requirements on artist names
+    must.push({ key: 'artist', match: { text: normArtist } });
+  }
+  if (normSubgenre) {
+    // Payload field is stored as "subgenres" array; use text match for partial/case-insensitive
+    must.push({ key: 'subgenres', match: { text: normSubgenre } });
+  }
+
+  const body = {
+    limit: numPoints,
+    with_payload: true
+  };
+  if (must.length > 0) {
+    body.filter = { must };
+  }
+
+  try {
+    const response = await fetch('http://localhost:6333/collections/MC%20Tunes/points/scroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('Qdrant error', response.status, text);
+      return res.status(502).json({ error: 'Recommendation service unavailable' });
+    }
+
+    const data = await response.json();
+    const points = data?.result?.points || [];
+    res.json({ recommendations: points });
+  } catch (err) {
+    console.error('Recommendation fetch failed:', err);
+    res.status(502).json({ error: 'Recommendation service unavailable' });
+  }
+});
+
+// Recommendations using saved like/dislike feedback in Songs_user_link
+app.get('/recommendations/with-feedback', async (req, res) => {
+  const { userId } = req.query;
+  const { genre = null, artist = null, subgenre = null } = req.query;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  const numPointsRaw = parseInt(req.query.num_points, 10);
+  const numPoints = Number.isNaN(numPointsRaw) ? 10 : Math.min(Math.max(numPointsRaw, 1), 50);
+
+  try {
+    // Prefetch likes/dislikes to seed recommend; if no likes, we will use scroll instead.
+    const likes = await sequelize.query(
+      "SELECT songID FROM Songs_user_link WHERE userID = ? AND rating = 1",
+      { replacements: [userId], type: QueryTypes.SELECT }
+    );
+    const dislikes = await sequelize.query(
+      "SELECT songID FROM Songs_user_link WHERE userID = ? AND rating = 0",
+      { replacements: [userId], type: QueryTypes.SELECT }
+    );
+
+    const positive_ids = likes
+      .map(r => Number(r.songID))
+      .filter(Number.isFinite);
+    const negative_ids = dislikes
+      .map(r => Number(r.songID))
+      .filter(Number.isFinite);
+
+    const normGenre = typeof genre === 'string' ? genre.trim() : null;
+    const normArtist = typeof artist === 'string' ? artist.trim() : null;
+    const normSubgenre = typeof subgenre === 'string' ? subgenre.trim() : null;
+
+    const must = [];
+    if (normGenre) must.push({ key: 'genre', match: { text: normGenre } });
+    if (normArtist) must.push({ key: 'artist', match: { text: normArtist } });
+    if (normSubgenre) must.push({ key: 'subgenres', match: { text: normSubgenre } });
+
+    //TODO
+    // Helper to perform scroll (used for empty positives or recommend fallback)
+    const doScroll = async () => {
+      const scrollBody = { limit: numPoints, with_payload: true };
+      const must_not = [];
+      if (negative_ids.length > 0) {
+        must_not.push({ key: 'id', match: { any: negative_ids } });
+      }
+      if (must.length > 0 || must_not.length > 0) {
+        scrollBody.filter = {};
+        if (must.length > 0) scrollBody.filter.must = must;
+        if (must_not.length > 0) scrollBody.filter.must_not = must_not;
+      }
+
+      const scrollRes = await fetch('http://localhost:6333/collections/MC%20Tunes/points/scroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scrollBody)
+      });
+
+      if (!scrollRes.ok) {
+        const text = await scrollRes.text();
+        console.error('Qdrant scroll error', scrollRes.status, text);
+        return res.status(502).json({ error: 'Recommendation service unavailable' });
+      }
+
+      const data = await scrollRes.json();
+      const points = data?.result?.points || data?.result || [];
+      return res.json({ recommendations: points, positive_ids, negative_ids });
+    };
+
+    // If we have no positive seeds, use scroll to avoid Qdrant positive-id requirement.
+    if (positive_ids.length === 0) {
+      return await doScroll();
+    }
+
+    // Use recommend when we have seeds
+    const body = {
+      limit: numPoints,
+      with_payload: true,
+      recommend: {
+        positive: positive_ids,
+        negative: negative_ids,
+        strategy: 'AVERAGE_VECTOR'
+      }
+    };
+    if (must.length > 0) {
+      body.filter = { must };
+    }
+
+    const response = await fetch('http://localhost:6333/collections/MC%20Tunes/points/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('Qdrant recommend error', response.status, text);
+      return await doScroll();
+    }
+
+    const data = await response.json();
+    const points = data?.result?.points || data?.result || [];
+    res.json({ recommendations: points, positive_ids, negative_ids });
+  } catch (err) {
+    console.error('Recommendation with feedback failed:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
