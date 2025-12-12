@@ -4,6 +4,39 @@ const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && i
     || (typeof process !== 'undefined' && process.env && process.env.VITE_API_BASE_URL)
     || 'http://localhost:3000';
 
+// Parsed recommendations coming directly from the Python vector_database.get_parsed_recommendations
+export const fetchParsedRecommendations = async ({ userId, genre, artist, subgenre, num_points }) => {
+    if (!userId) throw new Error('userId is required');
+
+    const res = await fetch(`${API_BASE_URL}/parsed-recommendations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            userId,
+            genre: genre || undefined,
+            artist: artist || undefined,
+            subgenre: subgenre || undefined,
+            num_points: num_points || undefined
+        })
+    });
+
+    let payload = null;
+    try {
+        payload = await res.json();
+    } catch {
+        payload = null;
+    }
+
+    if (!res.ok) {
+        const msg = payload && payload.error ? payload.error : (res.statusText || 'Failed to load recommendations');
+        throw new Error(msg);
+    }
+
+    // Function returns a list of tuples: (id, artist, genre, name)
+    const rawList = payload?.recommendations || payload?.result || payload || [];
+    return Array.isArray(rawList) ? rawList : [];
+};
+
 export const fetchRecommendations = async ({ genre, artist, subgenre, limit = 20 }) => {
     const params = new URLSearchParams();
     if (genre) params.append('genre', genre);

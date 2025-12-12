@@ -1,19 +1,28 @@
 import React, { useState } from 'react';
 import './recommendations.css';
-import { fetchRecommendations, fetchRecommendationsWithFeedback, submitRecommendationFeedback } from '../services/recommendations';
+import { fetchParsedRecommendations, submitRecommendationFeedback } from '../services/recommendations';
 
 function Recommendations({ onBack, user }) {
-  const [genre, setGenre] = useState('');
-  const [artist, setArtist] = useState('');
-  const [subgenre, setSubgenre] = useState('');
-  const [limit, setLimit] = useState(10);
-  const [mode, setMode] = useState('feedback'); // 'feedback' | 'filters'
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState({});
+  const [genre, setGenre] = useState('');
+  const [artist, setArtist] = useState('');
+  const [subgenre, setSubgenre] = useState('');
+  const [limit, setLimit] = useState('');
 
   const normalizeItem = (item, idx) => {
+    if (Array.isArray(item)) {
+      const [trackId, artistVal, genreVal, nameVal] = item;
+      return {
+        id: trackId ?? idx,
+        title: nameVal || 'Unknown track',
+        artist: artistVal || 'Unknown artist',
+        genre: genreVal || 'Unknown genre'
+      };
+    }
+
     const payload = item?.payload || item;
     return {
       id: item?.id ?? payload?.id ?? idx,
@@ -25,34 +34,22 @@ function Recommendations({ onBack, user }) {
   };
 
   const handleFetch = async () => {
+    if (!user?.userName) {
+      setError('Missing user id for recommendations');
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
-      if (mode === 'feedback') {
-        if (!user?.id) throw new Error('Missing user id for feedback-based recommendations');
-        const { list, positiveIds, negativeIds } = await fetchRecommendationsWithFeedback({
-          userId: user.id,
-          genre: genre || undefined,
-          artist: artist || undefined,
-          subgenre: subgenre || undefined,
-          limit
-        });
-        const mapped = list.map((r, i) => normalizeItem(r, i));
-        const fb = {};
-        positiveIds.forEach(id => { fb[String(id)] = 'like'; });
-        negativeIds.forEach(id => { fb[String(id)] = 'dislike'; });
-        setItems(mapped);
-        setFeedbackMap(fb);
-      } else {
-        const raw = await fetchRecommendations({
-          genre: genre || undefined,
-          artist: artist || undefined,
-          subgenre: subgenre || undefined,
-          limit
-        });
-        setItems(raw.map((r, i) => normalizeItem(r, i)));
-        setFeedbackMap({});
-      }
+      const raw = await fetchParsedRecommendations({
+        userId: user.userName || user.id,
+        genre: genre || undefined,
+        artist: artist || undefined,
+        subgenre: subgenre || undefined,
+        num_points: limit ? Number(limit) : undefined
+      });
+      setItems(raw.map((r, i) => normalizeItem(r, i)));
+      setFeedbackMap({});
     } catch (err) {
       setItems([]);
       setError(err.message || 'Could not load recommendations');
@@ -81,50 +78,33 @@ function Recommendations({ onBack, user }) {
         <button className="ribbon-btn" onClick={onBack}>Back</button>
       </div>
 
-      <div className="recs-mode">
-        <label>
-          <input
-            type="radio"
-            name="recs-mode"
-            value="feedback"
-            checked={mode === 'feedback'}
-            onChange={() => setMode('feedback')}
-          />
-          Use likes/dislikes
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="recs-mode"
-            value="filters"
-            checked={mode === 'filters'}
-            onChange={() => setMode('filters')}
-          />
-          Filters only
-        </label>
-      </div>
-
       <div className="recs-filters">
         <div className="recs-field">
-          <label>Genre</label>
+          <label>Your user id</label>
+          <input value={user?.id || ''} readOnly />
+          <small>Recommendations use your saved likes/dislikes.</small>
+        </div>
+        <div className="recs-field">
+          <label>Genre (optional)</label>
           <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="e.g., hip hop" />
         </div>
         <div className="recs-field">
-          <label>Artist</label>
+          <label>Artist (optional)</label>
           <input value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="e.g., drake" />
         </div>
         <div className="recs-field">
-          <label>Subgenre</label>
+          <label>Subgenre (optional)</label>
           <input value={subgenre} onChange={(e) => setSubgenre(e.target.value)} placeholder="e.g., trap" />
         </div>
         <div className="recs-field">
-          <label>How many</label>
+          <label>How many (optional)</label>
           <input
             type="number"
             min="1"
             max="50"
             value={limit}
-            onChange={(e) => setLimit(Number(e.target.value) || 1)}
+            onChange={(e) => setLimit(e.target.value)}
+            placeholder="default 20"
           />
         </div>
         <button className="ribbon-btn" onClick={handleFetch} disabled={isLoading}>
@@ -136,15 +116,15 @@ function Recommendations({ onBack, user }) {
 
       <div className="recs-list">
         {items.length === 0 && !isLoading && !error && (
-          <div className="recs-empty">No recommendations yet. Try applying a filter.</div>
+          <div className="recs-empty">No recommendations yet. Fetch to see personalized picks.</div>
         )}
         {items.map((item) => (
           <div key={item.id} className="recs-card">
             <div className="recs-title">{item.title}</div>
             <div className="recs-meta">
               <span>{item.artist}</span>
-              <span>• {item.genre}</span>
-              {item.score != null && <span>• score: {item.score}</span>}
+              <span>| {item.genre}</span>
+              {item.score != null && <span>| score: {item.score}</span>}
             </div>
             <div className="recs-actions">
               <button
