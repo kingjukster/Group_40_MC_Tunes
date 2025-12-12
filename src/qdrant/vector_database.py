@@ -88,15 +88,6 @@ class Recommendation_System:
             )
             # Scroll returns (points, next_offset)
             results = raw[0]
-
-        # Filter out any results that raise payload encoding issues
-        newresults = []
-        for point in results:
-            try:
-                newresults.append(point)
-            except Exception:
-                continue
-        results = newresults
         
         # Parsing will be returned as list of tuples. Tuples will be ordered (id, artist, genre, name)
         parsed_data = []
@@ -144,4 +135,4 @@ class Recommendation_System:
         
 if __name__ == "__main__":
     RS = Recommendation_System("MC Tunes")
-    RS.client.delete(collection_name="MC Tunes", points_selector=RS.build_filter(genre="latin"))
+    print(RS.get_parsed_recommendations("ADMIN"))
