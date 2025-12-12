@@ -7,6 +7,10 @@ function Recommendations({ onBack, user }) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState({});
+  const [genre, setGenre] = useState('');
+  const [artist, setArtist] = useState('');
+  const [subgenre, setSubgenre] = useState('');
+  const [limit, setLimit] = useState('');
 
   const normalizeItem = (item, idx) => {
     if (Array.isArray(item)) {
@@ -37,7 +41,13 @@ function Recommendations({ onBack, user }) {
     setIsLoading(true);
     setError('');
     try {
-      const raw = await fetchParsedRecommendations(user.userName);
+      const raw = await fetchParsedRecommendations({
+        userId: user.userName || user.id,
+        genre: genre || undefined,
+        artist: artist || undefined,
+        subgenre: subgenre || undefined,
+        num_points: limit ? Number(limit) : undefined
+      });
       setItems(raw.map((r, i) => normalizeItem(r, i)));
       setFeedbackMap({});
     } catch (err) {
@@ -73,6 +83,29 @@ function Recommendations({ onBack, user }) {
           <label>Your user id</label>
           <input value={user?.id || ''} readOnly />
           <small>Recommendations use your saved likes/dislikes.</small>
+        </div>
+        <div className="recs-field">
+          <label>Genre (optional)</label>
+          <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="e.g., hip hop" />
+        </div>
+        <div className="recs-field">
+          <label>Artist (optional)</label>
+          <input value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="e.g., drake" />
+        </div>
+        <div className="recs-field">
+          <label>Subgenre (optional)</label>
+          <input value={subgenre} onChange={(e) => setSubgenre(e.target.value)} placeholder="e.g., trap" />
+        </div>
+        <div className="recs-field">
+          <label>How many (optional)</label>
+          <input
+            type="number"
+            min="1"
+            max="50"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            placeholder="default 20"
+          />
         </div>
         <button className="ribbon-btn" onClick={handleFetch} disabled={isLoading}>
           {isLoading ? 'Loading...' : 'Get Recommendations'}

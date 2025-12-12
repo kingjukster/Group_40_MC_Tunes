@@ -5,13 +5,19 @@ const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && i
     || 'http://localhost:3000';
 
 // Parsed recommendations coming directly from the Python vector_database.get_parsed_recommendations
-export const fetchParsedRecommendations = async (userId) => {
+export const fetchParsedRecommendations = async ({ userId, genre, artist, subgenre, num_points }) => {
     if (!userId) throw new Error('userId is required');
 
     const res = await fetch(`${API_BASE_URL}/parsed-recommendations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({
+            userId,
+            genre: genre || undefined,
+            artist: artist || undefined,
+            subgenre: subgenre || undefined,
+            num_points: num_points || undefined
+        })
     });
 
     let payload = null;
