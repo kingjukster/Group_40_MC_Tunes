@@ -4,6 +4,7 @@ import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { Sequelize, QueryTypes } from 'sequelize';
+import { spawn } from 'node:child_process';
 import { hash } from '../src/services/login.js';
 
 
@@ -296,8 +297,11 @@ app.get('/bugreports', async(req, res) =>{
 
 //get all song ratings for a user
 app.get('/ratings', async(req,res) =>{
+  //testing
+  console.log("hi");
   try
-  { const {username} = req.query.username;
+  { const {username} = req.query;
+    console.log(username);
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
@@ -319,6 +323,7 @@ app.get('/ratings', async(req,res) =>{
           type: QueryTypes.SELECT
         }
       );
+      console.log(user[0].id);
       res.json({ reports: rows });
   }catch (err) {
     console.error(err);
@@ -556,6 +561,51 @@ app.get('/recommendations/with-feedback', async (req, res) => {
     console.error('Recommendation with feedback failed:', err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Parsed recommendations (tuple list) using the Python helper contract:
+// returns [(id, artist, genre, name), ...]
+app.post("/parsed-recommendations", (req, res) => {
+  const { userId, genre = "", artist = "", subgenre = "", num_points = 20 } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: "userId is required" });
+  }
+  
+  const projectRoot = path.join(__dirname, "..");
+  const scriptPath = path.join(projectRoot, "src", "qdrant", "run_recommendations.py");
+  const pythonProcess = spawn("python", [
+    scriptPath,
+    String(userId),
+    String(genre),
+    String(artist),
+    String(subgenre),
+    String(num_points)
+  ], {
+    cwd: projectRoot,
+    env: { ...process.env, PYTHONPATH: projectRoot }
+  });
+
+  let dataString = "";
+  let stderrString = "";
+
+  pythonProcess.stdout.on("data", (data) => {
+    dataString += data.toString();
+  });
+
+  pythonProcess.stderr.on("data", (data) => {
+    const text = data.toString();
+    stderrString += text;
+    console.error(`Python error: ${text}`);
+  });
+
+  pythonProcess.on("close", () => {
+    try {
+      const recommendations = JSON.parse(dataString);
+      return res.json({ recommendations });
+    } catch (err) {
+      return res.status(500).json({ error: stderrString || "Failed to parse Python output" });
+    }
+  });
 });
 
 app.listen(PORT, () => {

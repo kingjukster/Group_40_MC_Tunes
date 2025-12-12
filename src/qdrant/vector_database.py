@@ -2,6 +2,7 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http import models
 import requests
 
+
 class Recommendation_System:
 
     # Qdrant Vector DB is hosted locally in docker container outside of repo (currently using ports 6333 and 6334). System will be saved onto disk for now. 
@@ -74,12 +75,11 @@ class Recommendation_System:
     
     def get_parsed_recommendations(self, userID, genre=None, artist=None, subgenre=None, num_points=20):
         positive_ids, negative_ids = self.get_user_ratings(userID)
-
-        if len(positive_ids) != 0 or len(negative_ids) != 0:
+        if len(positive_ids) != 0:
             raw = self.get_recommendations_using_feedback(
                 positive_ids, negative_ids, genre, artist, subgenre, num_points
             )
-            # QueryResponseNearby → extract ScoredPoints
+            # QueryResponseNearby extract ScoredPoints
             results = raw.points
 
         else:
@@ -89,6 +89,14 @@ class Recommendation_System:
             # Scroll returns (points, next_offset)
             results = raw[0]
 
+        # Filter out any results that raise payload encoding issues
+        newresults = []
+        for point in results:
+            try:
+                newresults.append(point)
+            except Exception:
+                continue
+        results = newresults
         
         # Parsing will be returned as list of tuples. Tuples will be ordered (id, artist, genre, name)
         parsed_data = []
@@ -99,6 +107,12 @@ class Recommendation_System:
             name = point.payload.get("name")
 
             parsed_data.append((track_id, artist, genre, name))
+        # Shuffle to avoid returning the exact same ordering on repeated calls
+        try:
+            import random
+            random.shuffle(parsed_data)
+        except Exception:
+            pass
         return parsed_data
     
     def get_user_ratings(self, userID):
@@ -106,17 +120,16 @@ class Recommendation_System:
         url = "http://localhost:3000/ratings"
 
         params = {
-            f"username": {userID}
+            "username": userID
         }
 
         response = requests.get(url, params=params)
 
-        if response.ok:
-            data = response.json()
-            print("Ratings:", data)
-        else:
+        if not response.ok:
             print("Error:", response.status_code, response.text)
+            return [], []
 
+        data = response.json()
         positive_ids = []
         negative_ids = []
         for entry in data.get("reports", []):
@@ -131,4 +144,4 @@ class Recommendation_System:
         
 if __name__ == "__main__":
     RS = Recommendation_System("MC Tunes")
-    print(RS.get_parsed_recommendations(positive_ids=[26],negative_ids=[],genre="hip hop", num_points=10))
+    RS.client.delete(collection_name="MC Tunes", points_selector=RS.build_filter(genre="latin"))
