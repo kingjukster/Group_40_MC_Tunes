@@ -50,9 +50,11 @@ const sequelize = new Sequelize('user_info', 'root', process.env.password, {
   logging: false
 });
 
-sequelize.authenticate()
-  .then(() => console.log('Database connected successfully'))
-  .catch(err => console.error('Unable to connect to database:', err));
+if (process.env.NODE_ENV !== 'test') {
+  sequelize.authenticate()
+    .then(() => console.log('Database connected successfully'))
+    .catch(err => console.error('Unable to connect to database:', err));
+}
 
 //json parser
 app.use(express.json());
@@ -558,6 +560,11 @@ app.get('/recommendations/with-feedback', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:3000`);
+  });
+}
+
+export default app;
