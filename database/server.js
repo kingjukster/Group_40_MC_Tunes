@@ -170,7 +170,7 @@ app.post('/feedback', async(req, res) =>{
 //get user feedback - "ADMIN" or "DEV" permission level only
 app.get('/feedback', async(req, res) =>{
   try
-  { const {username} = req.query.username;
+  { const username = req.query.username;
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
@@ -250,7 +250,7 @@ app.post('/bugreports', async(req, res) =>{
 //get bug reports - "ADMIN" or "DEV" permission level only
 app.get('/bugreports', async(req, res) =>{
   try
-  { const {username} = req.query.username;
+  { const username = req.query.username;
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
@@ -299,7 +299,7 @@ app.get('/bugreports', async(req, res) =>{
 //get all song ratings for a user
 app.get('/ratings', async(req,res) =>{
   try
-  { const {username} = req.query.username;
+  { const username = req.query.username;
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
