@@ -51,9 +51,11 @@ const sequelize = new Sequelize('user_info', 'root', process.env.password, {
   logging: false
 });
 
-sequelize.authenticate()
-  .then(() => console.log('Database connected successfully'))
-  .catch(err => console.error('Unable to connect to database:', err));
+if (process.env.NODE_ENV !== 'test') {
+  sequelize.authenticate()
+    .then(() => console.log('Database connected successfully'))
+    .catch(err => console.error('Unable to connect to database:', err));
+}
 
 //json parser
 app.use(express.json());
@@ -169,7 +171,7 @@ app.post('/feedback', async(req, res) =>{
 //get user feedback - "ADMIN" or "DEV" permission level only
 app.get('/feedback', async(req, res) =>{
   try
-  { const {username} = req.query.username;
+  { const username = req.query.username;
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
@@ -249,7 +251,7 @@ app.post('/bugreports', async(req, res) =>{
 //get bug reports - "ADMIN" or "DEV" permission level only
 app.get('/bugreports', async(req, res) =>{
   try
-  { const {username} = req.query.username;
+  { const username = req.query.username;
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
@@ -300,8 +302,7 @@ app.get('/ratings', async(req,res) =>{
   //testing
   console.log("hi");
   try
-  { const {username} = req.query;
-    console.log(username);
+  { const username = req.query.username;
     if (!username) {
         return res.status(400).json({ error: "username is required" });
       }
@@ -439,6 +440,11 @@ app.post("/parsed-recommendations", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:3000`);
+  });
+}
+
+export default app;

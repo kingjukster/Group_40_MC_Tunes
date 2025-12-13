@@ -1,4 +1,4 @@
-name: Python Tests
+name: Tests
 
 on:
   push:
@@ -32,3 +32,24 @@ jobs:
         echo "Adding src to PYTHONPATH"
         export PYTHONPATH=$PWD/src
         pytest -v
+  
+  backend_test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24.11.0'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests
+      run: npm test
+      env:
+        NODE_ENV: test
