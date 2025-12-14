@@ -25,17 +25,6 @@ function Dashboard({ user, onLogout }) {
               <img src={MCT} className="logo logo-large" alt="MC Tunes logo" />
               <h1>Welcome to MC Tunes</h1>
             </div>
-
-            <div className="card">
-              <h2>Recommended for you</h2>
-              <ul className="song-list">
-                <li className="song-item">1. I’ll Be Missing You — Sean Combs (1997)</li>
-                <li className="song-item">2. God's Plan — Aubrey Graham (2018)</li>
-                <li className="song-item">3. Shake Ya Tailfeather — Sean Combs (2003)</li>
-                <li className="song-item">4. Hotline Bling — Aubrey Graham (2015)</li>
-                <li className="song-item">5. Crank That — Soulja Boy Tell`em (2007)</li>
-              </ul>
-            </div>
           </>
         )}
 
