@@ -10,8 +10,8 @@ def test_build_filter_with_params():
     assert f.must[0].key == "genre"
 
     # Genre + artist
-    f2 = rs.build_filter(genre="pop", artist="Artist1")
-    assert len(f2.must) == 2
+    f2 = rs.build_filter(genre="pop", artist="Artist1", subgenre="Subgenre1")
+    assert len(f2.must) == 3
 
     # No params returns None
     f3 = rs.build_filter()

@@ -1,7 +1,7 @@
 import sys
 import io
 import json
-from vector_database import Recommendation_System 
+from src.qdrant.vector_database import Recommendation_System 
 
 
 def main():

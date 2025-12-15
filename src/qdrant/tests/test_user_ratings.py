@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 from src.qdrant.vector_database import Recommendation_System
 
-def test_get_user_ratings(mocker):
+def test_get_user_ratings_success(mocker):
     rs = Recommendation_System("test_collection")
 
     # Mock the API response
@@ -21,3 +21,19 @@ def test_get_user_ratings(mocker):
 
     assert positive == [1, 3]
     assert negative == [2]
+
+def test_get_user_ratings_failure(mocker):
+    rs = Recommendation_System("test_collection")
+
+    # Mock the API response
+    mock_response = Mock()
+    mock_response.ok = False
+    mock_response.status_code = 500
+    mock_response.text = "Server Error"
+
+    mocker.patch("src.qdrant.vector_database.requests.get", return_value=mock_response)
+
+    positive, negative = rs.get_user_ratings("test_user")
+
+    assert positive == []
+    assert negative == []
