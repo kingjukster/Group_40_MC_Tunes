@@ -98,12 +98,6 @@ class Recommendation_System:
             name = point.payload.get("name")
 
             parsed_data.append((track_id, artist, genre, name))
-        # Shuffle to avoid returning the exact same ordering on repeated calls
-        try:
-            import random
-            random.shuffle(parsed_data)
-        except Exception:
-            pass
         return parsed_data
     
     def get_user_ratings(self, userID):
@@ -132,7 +126,3 @@ class Recommendation_System:
             elif rating == 0:
                 negative_ids.append(song_id)
         return positive_ids, negative_ids
-        
-if __name__ == "__main__":
-    RS = Recommendation_System("MC Tunes")
-    print(RS.get_parsed_recommendations("ADMIN"))

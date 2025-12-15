@@ -7,7 +7,7 @@ on:
     branches: [ "main", "develop" ]
 
 jobs:
-  test:
+  pytest:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,15 +23,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-mock
-        # uncomment if using coverage
-        # pip install pytest-cov
+        pip install pytest pytest-mock pytest-cov
 
     - name: Run tests
       run: |
         echo "Adding src to PYTHONPATH"
         export PYTHONPATH=$PWD/src
-        pytest -v
+        pytest --cov-config=pytest.ini
   
   backend_test:
     runs-on: ubuntu-latest
