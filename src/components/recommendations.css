@@ -34,6 +34,18 @@
   align-items: end;
 }
 
+.recs-mode {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  grid-column: 1 / -1;
+  color: #e0e0e0;
+}
+
+.recs-mode input {
+  margin-right: 5px;
+}
+
 .recs-field {
   display: flex;
   flex-direction: column;

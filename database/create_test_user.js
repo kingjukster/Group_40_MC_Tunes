@@ -1,10 +1,16 @@
 import { Sequelize, DataTypes } from 'sequelize';
-import { hashNewPassword } from '../src/services/mockUserService.js';
+import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const DB_NAME = 'user_info';
 const DB_USER = 'root';
-const DB_PASS = process.env.password
+const DB_PASS = process.env.password;
 const DB_HOST = 'localhost';
 const DB_PORT = 3306;
 
@@ -33,11 +39,11 @@ async function createTestUser() {
     const testPassword = 'admin123';
 
     
-    const { salt, hashedpassword } = hashNewPassword(testPassword);
+    const hashedpassword = await bcrypt.hash(testPassword, 12);
 
     const [user, created] = await Login.findOrCreate({
       where: { userName: testUserName },
-      defaults: { userSalt: salt, userHash: hashedpassword }
+      defaults: { userSalt: '', userHash: hashedpassword }
     });
 
     if (created) {

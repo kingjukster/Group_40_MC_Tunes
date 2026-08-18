@@ -16,10 +16,10 @@ class Recommendation_System:
     # Get recommedations based upon filters. If no, filters are used it will return anything
     # Can be used as a jumping off point before using likes and dislikes
     def get_recommendations_using_filter(self, genre=None, artist=None, subgenre=None, num_points=20):
-        Filter = self.build_filter(genre, artist, subgenre)
+        filter_value = self.build_filter(genre, artist, subgenre)
         results = self.client.scroll(
             collection_name=self.collection_name,
-            scroll_filter=Filter,
+            scroll_filter=filter_value,
             limit=num_points,
             with_payload=True
         )
@@ -33,7 +33,7 @@ class Recommendation_System:
             conditions.append(
                 models.FieldCondition(
                     key="genre",
-                    match=models.MatchValue(value=genre),
+                    match=models.MatchText(text=genre.strip()),
                 )
             )
 
@@ -41,15 +41,15 @@ class Recommendation_System:
             conditions.append(
                 models.FieldCondition(
                     key="artist",
-                    match=models.MatchValue(value=artist),
+                    match=models.MatchText(text=artist.strip()),
                 )
             )
 
         if subgenre is not None:
             conditions.append(
                 models.FieldCondition(
-                    key="subgenre",
-                    match=models.MatchValue(value=subgenre),
+                    key="subgenres",
+                    match=models.MatchText(text=subgenre.strip()),
                 )
             )
 
@@ -58,7 +58,7 @@ class Recommendation_System:
     
     # Given Feedback (ids of likes or dislikes), give new recommendations
     def get_recommendations_using_feedback(self, positive_ids, negative_ids, genre=None, artist=None, subgenre=None, num_points=20):
-        Filter = self.build_filter(genre, artist, subgenre)
+        filter_value = self.build_filter(genre, artist, subgenre)
         results = self.client.query_points(
             collection_name=self.collection_name,
             query=models.RecommendQuery(
@@ -68,7 +68,7 @@ class Recommendation_System:
                     strategy=models.RecommendStrategy.AVERAGE_VECTOR,
                     )
                 ),
-            query_filter=Filter,
+            query_filter=filter_value,
             limit=num_points
         )
         return results

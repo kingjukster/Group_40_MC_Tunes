@@ -38,7 +38,7 @@ CREATE TABLE  IF NOT EXISTS Songs_artists_user_link (
 CREATE TABLE IF NOT EXISTS Songs_user_link (
     songID INT NOT NULL,
     userID INT NOT NULL,
-    rating INT NOT NULL,
+    rating TINYINT NOT NULL CHECK (rating IN (0, 1)),
     PRIMARY KEY (songID,userID)
 );
 

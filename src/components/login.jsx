@@ -22,7 +22,7 @@ function Login({ onLogin }) {
                 console.log('Submitting login form:', { username });
                 const response = await authenticateUser(username, password);
                 console.log('Login response:', response);
-                onLogin(response.user);
+                onLogin({ ...response.user, token: response.token });
             } else {
                 console.log('Submitting registration form:', { username });
                 await registerUser(username, password);

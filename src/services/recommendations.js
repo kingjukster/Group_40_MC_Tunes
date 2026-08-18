@@ -1,47 +1,16 @@
 // Recommendations API client (uses backend endpoint backed by Qdrant helper)
 
 const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
-    || (typeof process !== 'undefined' && process.env && process.env.VITE_API_BASE_URL)
     || 'http://localhost:3000';
 
-// Parsed recommendations coming directly from the Python vector_database.get_parsed_recommendations
-export const fetchParsedRecommendations = async ({ userId, genre, artist, subgenre, num_points }) => {
-    if (!userId) throw new Error('userId is required');
-
-    const res = await fetch(`${API_BASE_URL}/parsed-recommendations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            userId,
-            genre: genre || undefined,
-            artist: artist || undefined,
-            subgenre: subgenre || undefined,
-            num_points: num_points || undefined
-        })
-    });
-
-    let payload = null;
-    try {
-        payload = await res.json();
-    } catch {
-        payload = null;
-    }
-
-    if (!res.ok) {
-        const msg = payload && payload.error ? payload.error : (res.statusText || 'Failed to load recommendations');
-        throw new Error(msg);
-    }
-
-    // Function returns a list of tuples: (id, artist, genre, name)
-    const rawList = payload?.recommendations || payload?.result || payload || [];
-    return Array.isArray(rawList) ? rawList : [];
-};
-
-export const fetchRecommendations = async ({ genre, artist, subgenre, limit = 20 }) => {
+export const fetchRecommendations = async ({ genre, artist, subgenre, tempo, energy, key, limit = 20 }) => {
     const params = new URLSearchParams();
     if (genre) params.append('genre', genre);
     if (artist) params.append('artist', artist);
     if (subgenre) params.append('subgenre', subgenre);
+    if (tempo) params.append('tempo', tempo);
+    if (energy !== undefined && energy !== '') params.append('energy', energy);
+    if (key !== undefined && key !== '') params.append('key', key);
     if (limit) params.append('num_points', limit);
 
     const res = await fetch(`${API_BASE_URL}/recommendations?${params.toString()}`, {
@@ -67,18 +36,21 @@ export const fetchRecommendations = async ({ genre, artist, subgenre, limit = 20
 };
 
 // Feedback-aware recommendations (uses /recommendations/with-feedback)
-export const fetchRecommendationsWithFeedback = async ({ userId, genre, artist, subgenre, limit = 20 }) => {
-    if (!userId) throw new Error('userId is required');
+export const fetchRecommendationsWithFeedback = async ({ token, genre, artist, subgenre, tempo, energy, key, limit = 20 }) => {
+    if (!token) throw new Error('Authentication required');
 
     const params = new URLSearchParams();
-    params.append('userId', userId);
     if (genre) params.append('genre', genre);
     if (artist) params.append('artist', artist);
     if (subgenre) params.append('subgenre', subgenre);
+    if (tempo) params.append('tempo', tempo);
+    if (energy !== undefined && energy !== '') params.append('energy', energy);
+    if (key !== undefined && key !== '') params.append('key', key);
     if (limit) params.append('num_points', limit);
 
     const res = await fetch(`${API_BASE_URL}/recommendations/with-feedback?${params.toString()}`, {
-        method: 'GET'
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` }
     });
 
     let payload = null;
@@ -104,15 +76,15 @@ export const fetchRecommendationsWithFeedback = async ({ userId, genre, artist, 
 };
 
 // Save like/dislike feedback (1 = like, 0 = dislike)
-export const submitRecommendationFeedback = async ({ userId, songId, rating }) => {
-    if (userId == null || songId == null || rating == null) {
-        throw new Error('userId, songId, and rating are required');
+export const submitRecommendationFeedback = async ({ token, songId, rating }) => {
+    if (!token || songId == null || rating == null) {
+        throw new Error('Authentication, song ID, and rating are required');
     }
 
     const res = await fetch(`${API_BASE_URL}/ratings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userid: userId, songid: songId, rating })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ songid: songId, rating })
     });
 
     let payload = null;

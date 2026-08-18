@@ -1,11 +1,12 @@
 import express from 'express';
 //import mysql from 'mysql2/promise';
-import path, { dirname } from "node:path";
+import path from "node:path";
+import crypto from 'node:crypto';
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { Sequelize, QueryTypes } from 'sequelize';
-import { spawn } from 'node:child_process';
-import { hash } from '../src/services/login.js';
+import bcrypt from 'bcryptjs';
+import { parseAudioPreferences, rankCandidates } from './recommendation_ranker.js';
 
 
 
@@ -16,15 +17,147 @@ dotenv.config({ path: path.join(__dirname,'.env') });
 
 const app = express();
 const PORT = 3000;
+const AUTH_SECRET = process.env.AUTH_SECRET || 'local-development-secret-change-me';
+const MULTIMODAL_COLLECTION = process.env.MULTIMODAL_COLLECTION || 'MC Tunes Multimodal';
+const requestCounts = new Map();
+
+function legacyHash(password, salt) {
+  let hashedValue = '';
+  const combinedValue = password + salt;
+  for (let index = 0; index < combinedValue.length; index += 1) {
+    hashedValue += (combinedValue.charCodeAt(index) * 31).toString(16);
+  }
+  return hashedValue;
+}
+
+function shufflePoints(points) {
+  const shuffled = [...points];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
+async function fetchMultimodalRecommendations({ positiveIds, negativeIds, ratedIds, must, limit }) {
+  if (positiveIds.length === 0) return null;
+
+  const filter = { must_not: [{ has_id: ratedIds }] };
+  if (must.length > 0) filter.must = must;
+  const body = {
+    using: 'mert',
+    limit,
+    with_payload: true,
+    filter,
+    recommend: {
+      positive: positiveIds,
+      negative: negativeIds,
+      strategy: 'AVERAGE_VECTOR'
+    }
+  };
+
+  try {
+    const response = await fetch(
+      `http://localhost:6333/collections/${encodeURIComponent(MULTIMODAL_COLLECTION)}/points/recommend`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data?.result?.points || data?.result || [];
+  } catch {
+    return null;
+  }
+}
+
+function createAuthToken(user) {
+  const payload = Buffer.from(JSON.stringify({
+    userId: user.id,
+    userName: user.userName,
+    expiresAt: Date.now() + (8 * 60 * 60 * 1000)
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function getAuthenticatedUser(req, res, next) {
+  const authorization = req.get('authorization') || '';
+  const [scheme, token] = authorization.split(' ');
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature) {
+    return res.status(401).json({ error: 'Invalid authentication token' });
+  }
+
+  const expectedSignature = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
+  const signaturesMatch = signature.length === expectedSignature.length
+    && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+  if (!signaturesMatch) {
+    return res.status(401).json({ error: 'Invalid authentication token' });
+  }
+
+  try {
+    const tokenData = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!tokenData.userId || tokenData.expiresAt <= Date.now()) {
+      return res.status(401).json({ error: 'Expired authentication token' });
+    }
+    req.auth = tokenData;
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid authentication token' });
+  }
+}
+
+function requirePermission(...allowedLevels) {
+  return async (req, res, next) => {
+    try {
+      const permissions = await sequelize.query(
+        `SELECT credentialLevel
+         FROM Permission_user_link pul
+         JOIN Permission_Level pl ON pl.id = pul.permissionID
+         WHERE pul.userID = ?`,
+        { replacements: [req.auth.userId], type: QueryTypes.SELECT }
+      );
+      const hasPermission = permissions.some(({ credentialLevel }) => allowedLevels.includes(credentialLevel));
+      if (!hasPermission) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+      }
+      return next();
+    } catch (error) {
+      console.error('Permission lookup failed:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  };
+}
+
+function rateLimit(req, res, next) {
+  const now = Date.now();
+  const windowStart = now - 60_000;
+  const requestKey = req.ip || 'unknown';
+  const recentRequests = (requestCounts.get(requestKey) || []).filter(timestamp => timestamp > windowStart);
+  if (recentRequests.length >= 120) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  recentRequests.push(now);
+  requestCounts.set(requestKey, recentRequests);
+  return next();
+}
 
 // Basic CORS for local dev front-end
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
   res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+app.use(rateLimit);
 
 const sequelize = new Sequelize('user_info', 'root', process.env.password, {
   dialect: 'mysql',
@@ -56,12 +189,15 @@ sequelize.authenticate()
   .catch(err => console.error('Unable to connect to database:', err));
 
 //json parser
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 //login api
-app.get('/login', async (req, res) => {
+app.post('/login', async (req, res) => {
   try{
-    const username = req.query.username;
+    const { username, password } = req.body;
+    if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
+    }
     //prepared statement
     const rows = await sequelize.query(
       "SELECT id, userName, userHash, userSalt FROM Login WHERE userName = ?",
@@ -73,12 +209,27 @@ app.get('/login', async (req, res) => {
     if (rows.length == 0)
       return res.status(401).json({ error: "Invalid credentials" });
 
-    const { hashedpassword } = hash(req.query.password, rows[0].userSalt);
-    if (hashedpassword !== rows[0].userHash) {
+    const storedHash = rows[0].userHash;
+    const isBcryptHash = storedHash.startsWith('$2');
+    const isValid = isBcryptHash
+      ? await bcrypt.compare(password, storedHash)
+      : legacyHash(password, rows[0].userSalt) === storedHash;
+    if (!isValid) {
       return res.status(401).json({ error: "Invalid Hash" });
     }
 
-    res.json({ message: "Login successful", user: rows[0] });
+    if (!isBcryptHash) {
+      const upgradedHash = await bcrypt.hash(password, 12);
+      await sequelize.query(
+        "UPDATE Login SET userHash = ?, userSalt = '' WHERE id = ?",
+        { replacements: [upgradedHash, rows[0].id], type: QueryTypes.UPDATE }
+      );
+    }
+
+    const user = { ...rows[0] };
+    delete user.userHash;
+    delete user.userSalt;
+    res.json({ message: "Login successful", user, token: createAuthToken(user) });
   }catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -88,10 +239,9 @@ app.get('/login', async (req, res) => {
 //register api
 app.post('/register', async(req,res) => {
   try{
-    //TODO: Should take in just username and password, hash password here
-    const { username, userhash, usersalt } = req.body;
-    if (!username || !usersalt || !userhash){
-      return res.status(400).json({ error: "All fields are required" });
+    const { username, password } = req.body;
+    if (typeof username !== 'string' || typeof password !== 'string' || username.trim().length < 3 || username.trim().length > 100 || password.length < 8){
+      return res.status(400).json({ error: "Username and password are required; password must be at least 8 characters" });
     }
     //prepared statement
     //check if username already exists
@@ -109,7 +259,7 @@ app.post('/register', async(req,res) => {
     const [rows] = await sequelize.query(
       "INSERT INTO Login (userName, userHash, userSalt) VALUES (?, ?, ?)",
       {
-        replacements: [username, userhash, usersalt],
+      replacements: [username.trim(), await bcrypt.hash(password, 12), ''],
         type: QueryTypes.INSERT
       }
     );
@@ -135,11 +285,11 @@ app.post('/register', async(req,res) => {
   }
 });
 
-app.post('/feedback', async(req, res) =>{
+app.post('/feedback', getAuthenticatedUser, async(req, res) =>{
   try {
-    const {userid, message, severity } = req.body;
+    const { message, severity } = req.body;
     
-    if (!message) {
+    if (typeof message !== 'string' || message.trim().length === 0 || message.length > 5000) {
       return res.status(400).json({ error: "Message is required" });
     }
     
@@ -154,7 +304,7 @@ app.post('/feedback', async(req, res) =>{
     await sequelize.query(
       "INSERT INTO Feedback_user_link (feedbackID, userID) VALUES (?,?)",
       {
-        replacements: [result,userid],
+        replacements: [result,req.auth.userId],
         type: QueryTypes.INSERT
       }
     )
@@ -167,17 +317,14 @@ app.post('/feedback', async(req, res) =>{
 });
 
 //get user feedback - "ADMIN" or "DEV" permission level only
-app.get('/feedback', async(req, res) =>{
+app.get('/feedback', getAuthenticatedUser, requirePermission('ADMIN', 'DEV'), async(req, res) =>{
   try
-  { const {username} = req.query.username;
-    if (!username) {
-        return res.status(400).json({ error: "username is required" });
-      }
+  {
     //get user id
     const user = await sequelize.query(
       "SELECT id FROM Login WHERE userName = ?",
         {
-          replacements: [username],
+          replacements: [req.auth.userName],
           type: QueryTypes.SELECT
         }
       );
@@ -215,11 +362,11 @@ app.get('/feedback', async(req, res) =>{
   }
 });
 
-app.post('/bugreports', async(req, res) =>{
+app.post('/bugreports', getAuthenticatedUser, async(req, res) =>{
   try {
-    const {userid, message, severity } = req.body;
+    const { message, severity } = req.body;
     
-    if (!message) {
+    if (typeof message !== 'string' || message.trim().length === 0 || message.length > 5000) {
       return res.status(400).json({ error: "Message is required" });
     }
     
@@ -234,7 +381,7 @@ app.post('/bugreports', async(req, res) =>{
     await sequelize.query(
       "INSERT INTO Bug_Report_user_link (reportID, userID) VALUES (?,?)",
       {
-        replacements: [result,userid],
+        replacements: [result,req.auth.userId],
         type: QueryTypes.INSERT
       }
     )
@@ -247,17 +394,14 @@ app.post('/bugreports', async(req, res) =>{
 });
 
 //get bug reports - "ADMIN" or "DEV" permission level only
-app.get('/bugreports', async(req, res) =>{
+app.get('/bugreports', getAuthenticatedUser, requirePermission('ADMIN', 'DEV'), async(req, res) =>{
   try
-  { const {username} = req.query.username;
-    if (!username) {
-        return res.status(400).json({ error: "username is required" });
-      }
+  {
     //get user id
     const user = await sequelize.query(
       "SELECT id FROM Login WHERE userName = ?",
         {
-          replacements: [username],
+          replacements: [req.auth.userName],
           type: QueryTypes.SELECT
         }
       );
@@ -296,34 +440,17 @@ app.get('/bugreports', async(req, res) =>{
 });
 
 //get all song ratings for a user
-app.get('/ratings', async(req,res) =>{
-  //testing
-  console.log("hi");
+app.get('/ratings', getAuthenticatedUser, async(req,res) =>{
   try
-  { const {username} = req.query;
-    console.log(username);
-    if (!username) {
-        return res.status(400).json({ error: "username is required" });
-      }
-    //get user id
-    const user = await sequelize.query(
-      "SELECT id FROM Login WHERE userName = ?",
-        {
-          replacements: [username],
-          type: QueryTypes.SELECT
-        }
-      );
-    if (user.length == 0)
-      return res.status(401).json({ error: "Invalid credentials" });
+  {
     //get user ratings
     const rows = await sequelize.query(
       "SELECT * FROM Songs_user_link WHERE userID = ?",
         {
-          replacements: [user[0].id],
+          replacements: [req.auth.userId],
           type: QueryTypes.SELECT
         }
       );
-      console.log(user[0].id);
       res.json({ reports: rows });
   }catch (err) {
     console.error(err);
@@ -331,11 +458,11 @@ app.get('/ratings', async(req,res) =>{
   }
 });
 
-app.post('/ratings', async(req, res) =>{
+app.post('/ratings', getAuthenticatedUser, async(req, res) =>{
   try {
-    const {userid, songid, rating } = req.body;
+    const { songid, rating } = req.body;
     
-    if (userid == null || songid == null || rating == null) {
+    if (songid == null || rating == null) {
       return res.status(400).json({ error: "Incomplete query" });
     }
     if (![0, 1, '0', '1'].includes(rating)) {
@@ -346,7 +473,7 @@ app.post('/ratings', async(req, res) =>{
     const user = await sequelize.query(
       "SELECT id FROM Login WHERE id = ?",
         {
-          replacements: [userid],
+          replacements: [req.auth.userId],
           type: QueryTypes.SELECT
         }
       );
@@ -355,7 +482,7 @@ app.post('/ratings', async(req, res) =>{
     await sequelize.query(
       "INSERT INTO Songs_user_link (songID,userID,rating) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE rating = VALUES(rating)",
       {
-        replacements: [songid,user[0].id,normalizedRating],
+        replacements: [songid,req.auth.userId,normalizedRating],
         type: QueryTypes.INSERT
       }
     );
@@ -367,11 +494,14 @@ app.post('/ratings', async(req, res) =>{
   }
 });
 
-app.post('/songs', async(req,res) => {
+app.post('/songs', getAuthenticatedUser, requirePermission('ADMIN', 'DEV'), async(req,res) => {
   try{
     const { songs } = req.body;
     if (!songs || !Array.isArray(songs) || songs.length === 0) {
       return res.status(400).json({ error: "Songs array is required" });
+    }
+    if (songs.length > 100 || songs.some(song => !song || typeof song.songName !== 'string' || !song.songName.trim())) {
+      return res.status(400).json({ error: "Each song must include a name; no more than 100 songs may be submitted" });
     }
     //insert each song
     for (const song of songs) {
@@ -404,6 +534,7 @@ app.get('/recommendations', async (req, res) => {
 
   const numPointsRaw = parseInt(req.query.num_points, 10);
   const numPoints = Number.isNaN(numPointsRaw) ? 10 : Math.min(Math.max(numPointsRaw, 1), 50);
+  const audioPreferences = parseAudioPreferences(req.query);
 
   const normGenre = typeof genre === 'string' ? genre.trim() : null;
   const normArtist = typeof artist === 'string' ? artist.trim() : null;
@@ -446,7 +577,7 @@ app.get('/recommendations', async (req, res) => {
 
     const data = await response.json();
     const points = data?.result?.points || [];
-    res.json({ recommendations: points });
+    res.json({ recommendations: rankCandidates(shufflePoints(points), audioPreferences, numPoints) });
   } catch (err) {
     console.error('Recommendation fetch failed:', err);
     res.status(502).json({ error: 'Recommendation service unavailable' });
@@ -454,16 +585,13 @@ app.get('/recommendations', async (req, res) => {
 });
 
 // Recommendations using saved like/dislike feedback in Songs_user_link
-app.get('/recommendations/with-feedback', async (req, res) => {
-  const { userId } = req.query;
+app.get('/recommendations/with-feedback', getAuthenticatedUser, async (req, res) => {
+  const userId = req.auth.userId;
   const { genre = null, artist = null, subgenre = null } = req.query;
-
-  if (!userId) {
-    return res.status(400).json({ error: 'userId is required' });
-  }
 
   const numPointsRaw = parseInt(req.query.num_points, 10);
   const numPoints = Number.isNaN(numPointsRaw) ? 10 : Math.min(Math.max(numPointsRaw, 1), 50);
+  const audioPreferences = parseAudioPreferences(req.query);
 
   try {
     // Prefetch likes/dislikes to seed recommend; if no likes, we will use scroll instead.
@@ -491,15 +619,28 @@ app.get('/recommendations/with-feedback', async (req, res) => {
     if (normGenre) must.push({ key: 'genre', match: { text: normGenre } });
     if (normArtist) must.push({ key: 'artist', match: { text: normArtist } });
     if (normSubgenre) must.push({ key: 'subgenres', match: { text: normSubgenre } });
+    const rated_ids = [...new Set([...positive_ids, ...negative_ids])];
 
-    //TODO
+    const multimodalPoints = await fetchMultimodalRecommendations({
+      positiveIds: positive_ids,
+      negativeIds: negative_ids,
+      ratedIds: rated_ids,
+      must,
+      limit: numPoints
+    });
+    if (multimodalPoints?.length > 0) {
+      return res.json({
+        recommendations: rankCandidates(multimodalPoints, audioPreferences, numPoints),
+        positive_ids,
+        negative_ids,
+        source: 'mert'
+      });
+    }
+
     // Helper to perform scroll (used for empty positives or recommend fallback)
     const doScroll = async () => {
       const scrollBody = { limit: numPoints, with_payload: true };
-      const must_not = [];
-      if (negative_ids.length > 0) {
-        must_not.push({ key: 'id', match: { any: negative_ids } });
-      }
+      const must_not = rated_ids.length > 0 ? [{ has_id: rated_ids }] : [];
       if (must.length > 0 || must_not.length > 0) {
         scrollBody.filter = {};
         if (must.length > 0) scrollBody.filter.must = must;
@@ -520,7 +661,11 @@ app.get('/recommendations/with-feedback', async (req, res) => {
 
       const data = await scrollRes.json();
       const points = data?.result?.points || data?.result || [];
-      return res.json({ recommendations: points, positive_ids, negative_ids });
+      return res.json({
+        recommendations: rankCandidates(shufflePoints(points), audioPreferences, numPoints),
+        positive_ids,
+        negative_ids
+      });
     };
 
     // If we have no positive seeds, use scroll to avoid Qdrant positive-id requirement.
@@ -541,6 +686,8 @@ app.get('/recommendations/with-feedback', async (req, res) => {
     if (must.length > 0) {
       body.filter = { must };
     }
+    body.filter = body.filter || {};
+    body.filter.must_not = [{ has_id: rated_ids }];
 
     const response = await fetch('http://localhost:6333/collections/MC%20Tunes/points/recommend', {
       method: 'POST',
@@ -556,56 +703,15 @@ app.get('/recommendations/with-feedback', async (req, res) => {
 
     const data = await response.json();
     const points = data?.result?.points || data?.result || [];
-    res.json({ recommendations: points, positive_ids, negative_ids });
+    res.json({
+      recommendations: rankCandidates(points, audioPreferences, numPoints),
+      positive_ids,
+      negative_ids
+    });
   } catch (err) {
     console.error('Recommendation with feedback failed:', err);
     res.status(500).json({ error: 'Server error' });
   }
-});
-
-// Parsed recommendations (tuple list) using the Python helper contract:
-// returns [(id, artist, genre, name), ...]
-app.post("/parsed-recommendations", (req, res) => {
-  const { userId, genre = "", artist = "", subgenre = "", num_points = 20 } = req.body;
-  if (!userId) {
-    return res.status(400).json({ error: "userId is required" });
-  }
-  
-  const projectRoot = path.join(__dirname, "..");
-  const scriptPath = path.join(projectRoot, "src", "qdrant", "run_recommendations.py");
-  const pythonProcess = spawn("python", [
-    scriptPath,
-    String(userId),
-    String(genre),
-    String(artist),
-    String(subgenre),
-    String(num_points)
-  ], {
-    cwd: projectRoot,
-    env: { ...process.env, PYTHONPATH: projectRoot }
-  });
-
-  let dataString = "";
-  let stderrString = "";
-
-  pythonProcess.stdout.on("data", (data) => {
-    dataString += data.toString();
-  });
-
-  pythonProcess.stderr.on("data", (data) => {
-    const text = data.toString();
-    stderrString += text;
-    console.error(`Python error: ${text}`);
-  });
-
-  pythonProcess.on("close", () => {
-    try {
-      const recommendations = JSON.parse(dataString);
-      return res.json({ recommendations });
-    } catch (err) {
-      return res.status(500).json({ error: stderrString || "Failed to parse Python output" });
-    }
-  });
 });
 
 app.listen(PORT, () => {

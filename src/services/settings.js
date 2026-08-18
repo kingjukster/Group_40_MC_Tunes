@@ -1,13 +1,12 @@
 // API helpers for settings (feedback and bug reports)
 
 const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
-    || (typeof process !== 'undefined' && process.env && process.env.VITE_API_BASE_URL)
     || 'http://localhost:3000';
 
-const postJson = async (path, body) => {
+const postJson = async (path, body, token) => {
     const res = await fetch(`${API_BASE_URL}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body)
     });
 
@@ -26,14 +25,14 @@ const postJson = async (path, body) => {
     return payload;
 };
 
-export const submitFeedback = async (userId, message, severity) => {
-    if (!userId) throw new Error('Missing user ID');
+export const submitFeedback = async (token, message, severity) => {
+    if (!token) throw new Error('Authentication required');
     if (!message) throw new Error('Message is required');
-    return postJson('/feedback', { userid: userId, message, severity });
+    return postJson('/feedback', { message, severity }, token);
 };
 
-export const submitBugReport = async (userId, message, severity) => {
-    if (!userId) throw new Error('Missing user ID');
+export const submitBugReport = async (token, message, severity) => {
+    if (!token) throw new Error('Authentication required');
     if (!message) throw new Error('Message is required');
-    return postJson('/bugreports', { userid: userId, message, severity });
+    return postJson('/bugreports', { message, severity }, token);
 };

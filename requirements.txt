@@ -5,3 +5,10 @@ numpy
 torch
 panns-inference
 requests
+librosa
+soundfile
+transformers>=4.45
+sentence-transformers>=3.0
+huggingface-hub>=0.25
+accelerate>=1.0
+safetensors>=0.4

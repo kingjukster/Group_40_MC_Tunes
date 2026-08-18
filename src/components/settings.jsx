@@ -4,13 +4,26 @@ import { submitFeedback, submitBugReport } from '../services/settings'
 
 function Settings({ user, onClose }) {
   // Local state for credential level and explicit preference
-  const [credentialLevel, setCredentialLevel] = useState(1) // default: 1 = user
+  const settingsKey = `mc-tunes-settings-${user?.id ?? 'current'}`
+  const [credentialLevel, setCredentialLevel] = useState(() => {
+    try {
+      return Number(JSON.parse(localStorage.getItem(settingsKey))?.credentialLevel ?? 1)
+    } catch {
+      return 1
+    }
+  })
   // Explicit recommendations default to true unless the account is a child (level 0)
-  const [allowExplicit, setAllowExplicit] = useState(true)
+  const [allowExplicit, setAllowExplicit] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(settingsKey))?.allowExplicit ?? true
+    } catch {
+      return true
+    }
+  })
   const [status, setStatus] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const userId = user?.id ?? user?.userID ?? user?.userId
+  const authToken = user?.token
 
   // If credential level is 0 (child), force explicit to false and disable changes
   useEffect(() => {
@@ -20,23 +33,22 @@ function Settings({ user, onClose }) {
   }, [credentialLevel])
 
   const handleSave = () => {
-    // Placeholder save - this should call an API
-    console.log('Saving settings', { credentialLevel, allowExplicit })
-    alert('Settings saved (placeholder)')
+    localStorage.setItem(settingsKey, JSON.stringify({ credentialLevel, allowExplicit }))
+    setStatus({ type: 'success', text: 'Settings saved.' })
   }
 
   const handleSendFeedback = () => {
     const message = window.prompt('Please enter your feedback:')
     if (message == null || message.trim() === '') return
 
-    if (!userId) {
-      setStatus({ type: 'error', text: 'User is not available. Please re-login.' })
+    if (!authToken) {
+      setStatus({ type: 'error', text: 'Authentication is unavailable. Please re-login.' })
       return
     }
 
     setStatus(null)
     setIsSubmitting(true)
-    submitFeedback(userId, message.trim(), 'MEDIUM')
+    submitFeedback(authToken, message.trim(), 'MEDIUM')
       .then(() => setStatus({ type: 'success', text: 'Feedback submitted. Thank you!' }))
       .catch((err) => setStatus({ type: 'error', text: err.message || 'Failed to submit feedback' }))
       .finally(() => setIsSubmitting(false))
@@ -46,14 +58,14 @@ function Settings({ user, onClose }) {
     const message = window.prompt('Please describe the bug you encountered:')
     if (message == null || message.trim() === '') return
 
-    if (!userId) {
-      setStatus({ type: 'error', text: 'User is not available. Please re-login.' })
+    if (!authToken) {
+      setStatus({ type: 'error', text: 'Authentication is unavailable. Please re-login.' })
       return
     }
 
     setStatus(null)
     setIsSubmitting(true)
-    submitBugReport(userId, message.trim(), 'HIGH')
+    submitBugReport(authToken, message.trim(), 'HIGH')
       .then(() => setStatus({ type: 'success', text: 'Bug report submitted. Thank you!' }))
       .catch((err) => setStatus({ type: 'error', text: err.message || 'Failed to submit bug report' }))
       .finally(() => setIsSubmitting(false))

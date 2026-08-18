@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import './recommendations.css';
-import { fetchParsedRecommendations, submitRecommendationFeedback } from '../services/recommendations';
+import { fetchRecommendations, fetchRecommendationsWithFeedback, submitRecommendationFeedback } from '../services/recommendations';
 
 function Recommendations({ onBack, user }) {
   const [items, setItems] = useState([]);
@@ -10,7 +10,11 @@ function Recommendations({ onBack, user }) {
   const [genre, setGenre] = useState('');
   const [artist, setArtist] = useState('');
   const [subgenre, setSubgenre] = useState('');
+  const [tempo, setTempo] = useState('');
+  const [energy, setEnergy] = useState('');
+  const [key, setKey] = useState('');
   const [limit, setLimit] = useState('');
+  const [mode, setMode] = useState('personalized');
 
   const normalizeItem = (item, idx) => {
     if (Array.isArray(item)) {
@@ -29,27 +33,45 @@ function Recommendations({ onBack, user }) {
       title: payload?.title || payload?.songName || payload?.name || 'Unknown track',
       artist: payload?.artist || payload?.artistName || 'Unknown artist',
       genre: payload?.genre || payload?.subgenre || 'Unknown genre',
-      score: item?.score ?? payload?._score
+      score: item?.score ?? payload?._score,
+      audioFeatures: payload?.audio_features || null
     };
   };
 
   const handleFetch = async () => {
-    if (!user?.userName) {
-      setError('Missing user id for recommendations');
+    if (!user?.token) {
+      setError('Authentication required for recommendations');
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const raw = await fetchParsedRecommendations({
-        userId: user.userName || user.id,
-        genre: genre || undefined,
-        artist: artist || undefined,
-        subgenre: subgenre || undefined,
-        num_points: limit ? Number(limit) : undefined
-      });
-      setItems(raw.map((r, i) => normalizeItem(r, i)));
-      setFeedbackMap({});
+      const response = mode === 'personalized'
+        ? await fetchRecommendationsWithFeedback({
+            token: user.token,
+            genre: genre || undefined,
+            artist: artist || undefined,
+            subgenre: subgenre || undefined,
+            tempo: tempo || undefined,
+            energy: energy || undefined,
+            key: key || undefined,
+            limit: limit ? Number(limit) : undefined
+          })
+        : { list: await fetchRecommendations({
+            genre: genre || undefined,
+            artist: artist || undefined,
+            subgenre: subgenre || undefined,
+            tempo: tempo || undefined,
+            energy: energy || undefined,
+            key: key || undefined,
+            limit: limit ? Number(limit) : undefined
+          }), positiveIds: [], negativeIds: [] };
+      const { list, positiveIds, negativeIds } = response;
+      setItems(list.map((r, i) => normalizeItem(r, i)));
+      const savedFeedback = {};
+      positiveIds.forEach(id => { savedFeedback[String(id)] = 'like'; });
+      negativeIds.forEach(id => { savedFeedback[String(id)] = 'dislike'; });
+      setFeedbackMap(savedFeedback);
     } catch (err) {
       setItems([]);
       setError(err.message || 'Could not load recommendations');
@@ -59,12 +81,12 @@ function Recommendations({ onBack, user }) {
   };
 
   const handleFeedback = async (itemId, rating) => {
-    if (!user?.id) {
-      setError('Missing user id for feedback');
+    if (!user?.token) {
+      setError('Authentication required for feedback');
       return;
     }
     try {
-      await submitRecommendationFeedback({ userId: user.id, songId: itemId, rating });
+      await submitRecommendationFeedback({ token: user.token, songId: itemId, rating });
       setFeedbackMap(prev => ({ ...prev, [String(itemId)]: rating === 1 ? 'like' : 'dislike' }));
     } catch (err) {
       setError(err.message || 'Could not save feedback');
@@ -79,10 +101,19 @@ function Recommendations({ onBack, user }) {
       </div>
 
       <div className="recs-filters">
+        <div className="recs-mode">
+          <label>
+            <input type="radio" checked={mode === 'personalized'} onChange={() => setMode('personalized')} />
+            Personalized
+          </label>
+          <label>
+            <input type="radio" checked={mode === 'filters'} onChange={() => setMode('filters')} />
+            Filters only
+          </label>
+        </div>
         <div className="recs-field">
-          <label>Your user id</label>
-          <input value={user?.id || ''} readOnly />
-          <small>Recommendations use your saved likes/dislikes.</small>
+          <label>Recommendation mode</label>
+          <small>{mode === 'personalized' ? 'Uses your saved likes and dislikes.' : 'Searches the catalog using only your filters.'}</small>
         </div>
         <div className="recs-field">
           <label>Genre (optional)</label>
@@ -107,6 +138,18 @@ function Recommendations({ onBack, user }) {
             placeholder="default 20"
           />
         </div>
+        <div className="recs-field">
+          <label>Tempo BPM (optional)</label>
+          <input type="number" min="30" max="240" value={tempo} onChange={(e) => setTempo(e.target.value)} placeholder="e.g., 120" />
+        </div>
+        <div className="recs-field">
+          <label>Energy 0–1 (optional)</label>
+          <input type="number" min="0" max="1" step="0.1" value={energy} onChange={(e) => setEnergy(e.target.value)} placeholder="e.g., 0.8" />
+        </div>
+        <div className="recs-field">
+          <label>Key 0–11 (optional)</label>
+          <input type="number" min="0" max="11" value={key} onChange={(e) => setKey(e.target.value)} placeholder="pitch class" />
+        </div>
         <button className="ribbon-btn" onClick={handleFetch} disabled={isLoading}>
           {isLoading ? 'Loading...' : 'Get Recommendations'}
         </button>
@@ -125,6 +168,7 @@ function Recommendations({ onBack, user }) {
               <span>{item.artist}</span>
               <span>| {item.genre}</span>
               {item.score != null && <span>| score: {item.score}</span>}
+              {item.audioFeatures?.tempo_bpm != null && <span>| {Math.round(item.audioFeatures.tempo_bpm)} BPM</span>}
             </div>
             <div className="recs-actions">
               <button
